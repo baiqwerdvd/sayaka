@@ -4,13 +4,21 @@ build-backend = "maturin"
 
 [project]
 name = "sayaka"
+description = "A Rust-backed Python module for decrypting and decompressing data for an anime game."
 requires-python = ">=3.9"
+authors = [{ name = "baiqwerdvd", email = "baiqwerdvd@gmail.com" }]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+license = { text = "MIT" }
+readme = "README.md"
+
+[project.urls]
+Homepage = "https://github.com/baiqwerdvd/sayaka"
+Repository = "https://github.com/baiqwerdvd/sayaka"
 
 [tool.maturin]
 python-source = "python"
