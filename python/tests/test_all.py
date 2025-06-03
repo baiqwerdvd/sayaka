@@ -3,6 +3,7 @@ import sayaka
 
 current_dir = pathlib.Path(__file__).parent.absolute()
 
+
 def test_decompress_buffer():
     compressed_file_path = current_dir / "compressed_data.bin"
     expected_file_path = current_dir / "decompressed_data.bin"
