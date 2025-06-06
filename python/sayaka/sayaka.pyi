@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, final
 
 ByteString = Union[bytes, bytearray, memoryview]
 
@@ -13,3 +13,7 @@ def miki_decrypt_and_decompress(
 def miki_decrypt_old_and_decompress(
     encrypted_bytes: ByteString, uncompressed_size: int
 ) -> bytes: ...
+@final
+class ChaCha20:
+    def __init__(self, key: bytes, nonce: bytes, counter: int) -> None: ...
+    def work_bytes(self, input_bytes: ByteString) -> bytes: ...

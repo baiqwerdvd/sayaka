@@ -1,5 +1,6 @@
-mod miki;
+mod chacha20;
 mod lz4inv;
+mod miki;
 
 use pyo3::prelude::*;
 
@@ -9,8 +10,11 @@ mod sayaka {
 
     use pyo3::{exceptions::PyBufferError, ffi, types::PyBytes};
 
-    use crate::miki::{decrypt_old_to, decrypt_to};
     use crate::lz4inv::decompress_impl;
+    use crate::miki::{decrypt_old_to, decrypt_to};
+
+    #[pymodule_export]
+    use crate::chacha20::ChaCha20;
 
     use super::*;
 

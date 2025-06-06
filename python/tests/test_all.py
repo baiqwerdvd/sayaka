@@ -44,3 +44,19 @@ def test_miki_decrypt_old():
             expected_data = expected_file.read()
 
         assert decrypted == expected_data, "Decrypted data does not match expected data"
+
+
+def test_chacha20():
+    key = bytes.fromhex(
+        "0000000000000000000000000000000000000000000000000000000000000000"
+    )
+    nonce = bytes.fromhex("000000000000000000000000")
+    counter = 1
+    chacha = sayaka.ChaCha20(key, nonce, counter)
+
+    plaintext = b"Hello, World!"
+    encrypted = chacha.work_bytes(plaintext)
+    excepted = "d7 62 8b d2 3a 7d 18 2d f7 c8 fb 18 52"
+
+    expected_bytes = bytes.fromhex(excepted)
+    assert encrypted == expected_bytes, "Encrypted data does not match expected data"
