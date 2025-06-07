@@ -60,3 +60,16 @@ def test_chacha20():
 
     expected_bytes = bytes.fromhex(excepted)
     assert encrypted == expected_bytes, "Encrypted data does not match expected data"
+
+
+def test_hgmmap():
+    hgmmap = sayaka.ManifestDataBinary()
+
+    mmap_file = current_dir / "manifest.hgmmap"
+    is_success = hgmmap.init_binary(mmap_file.as_posix())
+    assert is_success, "Failed to initialize hgmmap"
+
+    output_file = current_dir / "manifest.hgmmap.json"
+    is_success = hgmmap.save_to_json_file(output_file.as_posix())
+    assert is_success, "Failed to save hgmmap to JSON file"
+    output_file.unlink(missing_ok=True)

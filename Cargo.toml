@@ -1,6 +1,6 @@
 [package]
 name = "sayaka"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -10,3 +10,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = "0.25.0"
+memmap2 = "0.9.5"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"

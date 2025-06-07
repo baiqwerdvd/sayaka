@@ -5,3 +5,4 @@ from .sayaka import miki_decrypt_and_decompress as miki_decrypt_and_decompress
 from .sayaka import miki_decrypt_old_and_decompress as miki_decrypt_old_and_decompress
 
 from .sayaka import ChaCha20 as ChaCha20
+from .sayaka import ManifestDataBinary as ManifestDataBinary

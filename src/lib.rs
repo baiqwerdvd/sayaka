@@ -1,6 +1,7 @@
 mod chacha20;
 mod lz4inv;
 mod miki;
+mod hgmmap;
 
 use pyo3::prelude::*;
 
@@ -15,6 +16,9 @@ mod sayaka {
 
     #[pymodule_export]
     use crate::chacha20::ChaCha20;
+
+    #[pymodule_export]
+    use crate::hgmmap::ManifestDataBinary;
 
     use super::*;
 
