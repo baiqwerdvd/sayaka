@@ -609,11 +609,6 @@ impl ManifestDataBinary {
         self.memory_map = Some(mmap);
         self._file = Some(file);
 
-        println!(
-            "Manifest initialized: hash={}, perforce_cl={}",
-            self.hash, self.perforce_cl
-        );
-
         Ok(true)
     }
 
