@@ -1,4 +1,5 @@
 use memmap2::Mmap;
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::{PyErr, PyResult, pyclass, pymethods};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -9,13 +10,14 @@ use std::io::{self, BufWriter, Write};
 pub enum HgMmapError {
     InvalidHeader,
     InvalidVersion,
-    InvalidRootCategory,
+    InvalidRootCategory(u32),
     MemoryMapError(io::Error),
     Utf16ConversionError(std::string::FromUtf16Error),
     NotInitialized,
     IndexOutOfRange,
     GuidCreationError(String),
     RefEnumeratorIndexOutOfRange,
+    SerializationError(String),
 }
 
 impl Display for HgMmapError {
@@ -23,7 +25,7 @@ impl Display for HgMmapError {
         match self {
             HgMmapError::InvalidHeader => write!(f, "Invalid header"),
             HgMmapError::InvalidVersion => write!(f, "Invalid version"),
-            HgMmapError::InvalidRootCategory => write!(f, "Invalid root category"),
+            HgMmapError::InvalidRootCategory(id) => write!(f, "Invalid root category: {}", id),
             HgMmapError::MemoryMapError(err) => write!(f, "Memory map error: {}", err),
             HgMmapError::Utf16ConversionError(err) => write!(f, "UTF-16 conversion error: {}", err),
             HgMmapError::NotInitialized => write!(f, "Not initialized"),
@@ -34,6 +36,7 @@ impl Display for HgMmapError {
             HgMmapError::RefEnumeratorIndexOutOfRange => {
                 write!(f, "RefEnumerator index out of range")
             }
+            HgMmapError::SerializationError(err) => write!(f, "Serialization error: {}", err),
         }
     }
 }
@@ -60,7 +63,7 @@ impl TryFrom<u32> for RootCategory {
             0 => Ok(RootCategory::Main),
             1 => Ok(RootCategory::Initial),
             2 => Ok(RootCategory::ENum),
-            _ => Err(HgMmapError::InvalidRootCategory),
+            _ => Err(HgMmapError::InvalidRootCategory(value)),
         }
     }
 }
@@ -71,6 +74,21 @@ pub struct GuidProxy {
     pub val1: u32,
     pub val2: u32,
     pub val3: u32,
+}
+
+impl Display for GuidProxy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:08x}-{:04x}-{:04x}-{:04x}-{:04x}{:08x}",
+            self.val0,
+            self.val1 >> 16,
+            self.val1 & 0xFFFF,
+            self.val2 >> 16,
+            self.val2 & 0xFFFF,
+            self.val3
+        )
+    }
 }
 
 impl GuidProxy {
@@ -92,18 +110,6 @@ impl GuidProxy {
             val2,
             val3,
         })
-    }
-
-    pub fn to_string(&self) -> String {
-        format!(
-            "{:08x}-{:04x}-{:04x}-{:04x}-{:04x}{:08x}",
-            self.val0,
-            self.val1 >> 16,
-            self.val1 & 0xFFFF,
-            self.val2 >> 16,
-            self.val2 & 0xFFFF,
-            self.val3
-        )
     }
 }
 
@@ -274,7 +280,7 @@ pub struct RefEnumerator<'a> {
     current_index: i32,
     slot_index: usize,
     capacity: u32,
-    memory_map: &'a Mmap,
+    memory_map: Option<&'a Mmap>,
 }
 
 impl<'a> RefEnumerator<'a> {
@@ -285,18 +291,19 @@ impl<'a> RefEnumerator<'a> {
             current_index: -1,
             slot_index: 0,
             capacity: table.capacity,
-            memory_map: unsafe { std::mem::transmute::<*const Mmap, &'a Mmap>(std::ptr::null()) }, // This will be set properly
+            memory_map: None,
         }
     }
 
     pub fn with_memory_map(mut self, memory_map: &'a Mmap) -> Self {
-        self.memory_map = memory_map;
+        self.memory_map = Some(memory_map);
         self
     }
 
     pub fn get_current(&self, item_size: usize) -> Result<&[u8], HgMmapError> {
+        let mmap = self.memory_map.ok_or(HgMmapError::NotInitialized)?;
         let slot_start = self.slot_offset + 8 * self.slot_index;
-        let slot_data = &self.memory_map[slot_start..slot_start + 8];
+        let slot_data = &mmap[slot_start..slot_start + 8];
         let slot = RefHashSlot::from_bytes(slot_data);
 
         if self.current_index as u32 >= slot.buckets_size {
@@ -305,19 +312,20 @@ impl<'a> RefEnumerator<'a> {
 
         let value_offset =
             self.offset + slot.offset as usize + item_size * self.current_index as usize;
-        Ok(&self.memory_map[value_offset..value_offset + item_size])
+        Ok(&mmap[value_offset..value_offset + item_size])
     }
 
-    pub fn move_next(&mut self) -> bool {
+    pub fn move_next(&mut self) -> Result<bool, HgMmapError> {
+        let mmap = self.memory_map.ok_or(HgMmapError::NotInitialized)?;
         self.current_index += 1;
 
         if self.slot_index >= self.capacity as usize {
-            return false;
+            return Ok(false);
         }
 
         loop {
             let slot_start = self.slot_offset + 8 * self.slot_index;
-            let slot_data = &self.memory_map[slot_start..slot_start + 8];
+            let slot_data = &mmap[slot_start..slot_start + 8];
             let slot = RefHashSlot::from_bytes(slot_data);
 
             if (self.current_index as u32) < slot.buckets_size {
@@ -328,11 +336,11 @@ impl<'a> RefEnumerator<'a> {
             self.current_index = 0;
 
             if self.slot_index >= self.capacity as usize {
-                return false;
+                return Ok(false);
             }
         }
 
-        true
+        Ok(true)
     }
 }
 
@@ -447,6 +455,7 @@ pub struct ManifestData {
 }
 
 #[pyclass]
+#[derive(Debug, Default)]
 pub struct ManifestDataBinary {
     bundles: Option<RefArray>,
     asset_info_dictionary: Option<RefMultiHashTable>,
@@ -464,23 +473,28 @@ pub struct ManifestDataBinary {
 impl ManifestDataBinary {
     #[new]
     pub fn new() -> Self {
-        ManifestDataBinary {
-            bundles: None,
-            asset_info_dictionary: None,
-            hash: String::new(),
-            perforce_cl: String::new(),
-            memory_map: None,
-            _file: None,
-            offset: 0,
-            asset_info_offset: 0,
-            bundle_offset: 0,
-            data_offset: 0,
-        }
+        ManifestDataBinary::default()
     }
 
     pub fn init_binary(&mut self, file_path: &str) -> PyResult<bool> {
-        let file = File::open(file_path)?;
-        let mmap = unsafe { Mmap::map(&file)? };
+        self.init_binary_inner(file_path).map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to initialize binary: {}", e))
+        })
+    }
+
+    pub fn save_to_json_file(&self, output_path: &str) -> PyResult<bool> {
+        Ok(self.save_to_json_file_inner(output_path)?)
+    }
+}
+
+impl ManifestDataBinary {
+    const HEAD1: u32 = 4279369489;
+    const HEAD2: u32 = 4059231220;
+    const _VERSION: &'static str = "1.0.1";
+
+    fn init_binary_inner(&mut self, file_path: &str) -> Result<bool, HgMmapError> {
+        let file = File::open(file_path).map_err(HgMmapError::MemoryMapError)?;
+        let mmap = unsafe { Mmap::map(&file).map_err(HgMmapError::MemoryMapError)? };
 
         let mut position = 0;
         self.offset = position;
@@ -595,30 +609,26 @@ impl ManifestDataBinary {
         self.memory_map = Some(mmap);
         self._file = Some(file);
 
+        println!(
+            "Manifest initialized: hash={}, perforce_cl={}",
+            self.hash, self.perforce_cl
+        );
+
         Ok(true)
     }
 
-    pub fn save_to_json_file(&self, output_path: &str) -> PyResult<bool> {
+    fn save_to_json_file_inner(&self, output_path: &str) -> Result<bool, HgMmapError> {
         let manifest_data = self.to_manifest_data()?;
-        let file = File::create(output_path)?;
+        let file = File::create(output_path).map_err(HgMmapError::MemoryMapError)?;
         let mut writer = BufWriter::new(file);
         serde_json::to_writer_pretty(&mut writer, &manifest_data).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to serialize JSON: {}", e),
-            )
+            HgMmapError::SerializationError(format!("Failed to serialize JSON: {}", e))
         })?;
-        writer.flush()?;
+        writer.flush().map_err(HgMmapError::MemoryMapError)?;
         Ok(true)
     }
-}
 
-impl ManifestDataBinary {
-    const HEAD1: u32 = 4279369489;
-    const HEAD2: u32 = 4059231220;
-    const _VERSION: &'static str = "1.0.1";
-
-    pub fn to_manifest_data(&self) -> PyResult<ManifestData> {
+    fn to_manifest_data(&self) -> Result<ManifestData, HgMmapError> {
         let mmap = self
             .memory_map
             .as_ref()
@@ -678,7 +688,7 @@ impl ManifestDataBinary {
         let mut result_assets = Vec::new();
         let mut enumerator = asset_info_dict.get_enumerator().with_memory_map(mmap);
 
-        while enumerator.move_next() {
+        while enumerator.move_next()? {
             let asset_data = enumerator.get_current(48)?;
             let (mut asset_info, path_ref) = AssetInfo::from_bytes(asset_data);
 
@@ -698,14 +708,12 @@ impl ManifestDataBinary {
         })
     }
 
-    pub fn to_json(&self) -> PyResult<String> {
+    #[allow(dead_code)]
+    fn to_json(&self) -> Result<String, HgMmapError> {
         let manifest_data = self.to_manifest_data()?;
-        Ok(serde_json::to_string(&manifest_data).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to serialize JSON: {}",
-                e
-            ))
-        })?)
+        serde_json::to_string(&manifest_data).map_err(|e| {
+            HgMmapError::SerializationError(format!("Failed to serialize JSON: {}", e))
+        })
     }
 }
 
@@ -715,16 +723,18 @@ mod tests {
 
     #[test]
     fn test() -> Result<(), Box<dyn std::error::Error>> {
-        let mut manifest = ManifestDataBinary::new();
+        let mut manifest = ManifestDataBinary::default();
 
         let file_path = "manifest.hgmmap";
 
-        match manifest.init_binary(file_path) {
+        match manifest.init_binary_inner(file_path) {
             Ok(true) => {
                 println!("Successfully loaded manifest binary");
                 println!("Hash: {}", manifest.hash);
 
-                manifest.save_to_json_file("manifest.hgmmap.json")?;
+                manifest
+                    .save_to_json_file_inner("manifest.hgmmap.json")
+                    .unwrap();
                 println!("Manifest data saved to manifest.hgmmap.json");
             }
             Ok(false) => {

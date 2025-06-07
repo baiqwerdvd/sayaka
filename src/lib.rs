@@ -1,7 +1,7 @@
 mod chacha20;
+mod hgmmap;
 mod lz4inv;
 mod miki;
-mod hgmmap;
 
 use pyo3::prelude::*;
 

@@ -59,13 +59,15 @@ impl ChaCha20 {
             return Err(ChaCha20Error::InvalidKeyLength {
                 expected: ALLOWED_KEY_LENGTH,
                 actual: key.len(),
-            }.into());
+            }
+            .into());
         }
         if nonce.len() != ALLOWED_NONCE_LENGTH {
             return Err(ChaCha20Error::InvalidNonceLength {
                 expected: ALLOWED_NONCE_LENGTH,
                 actual: nonce.len(),
-            }.into());
+            }
+            .into());
         }
 
         let mut state = [0u32; STATE_LENGTH];
