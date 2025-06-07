@@ -14,6 +14,8 @@ pub enum HgMmapError {
     Utf16ConversionError(std::string::FromUtf16Error),
     NotInitialized,
     IndexOutOfRange,
+    GuidCreationError(String),
+    RefEnumeratorIndexOutOfRange,
 }
 
 impl Display for HgMmapError {
@@ -26,6 +28,12 @@ impl Display for HgMmapError {
             HgMmapError::Utf16ConversionError(err) => write!(f, "UTF-16 conversion error: {}", err),
             HgMmapError::NotInitialized => write!(f, "Not initialized"),
             HgMmapError::IndexOutOfRange => write!(f, "Index out of range"),
+            HgMmapError::GuidCreationError(err) => {
+                write!(f, "GUID creation error: {}", err)
+            }
+            HgMmapError::RefEnumeratorIndexOutOfRange => {
+                write!(f, "RefEnumerator index out of range")
+            }
         }
     }
 }
@@ -66,9 +74,11 @@ pub struct GuidProxy {
 }
 
 impl GuidProxy {
-    pub fn new(data: &[u8]) -> Result<Self, &'static str> {
+    pub fn new(data: &[u8]) -> Result<Self, HgMmapError> {
         if data.len() != 16 {
-            return Err("GUID must be 16 bytes");
+            return Err(HgMmapError::GuidCreationError(
+                "GUID must be 16 bytes".to_string(),
+            ));
         }
 
         let val0 = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
@@ -290,7 +300,7 @@ impl<'a> RefEnumerator<'a> {
         let slot = RefHashSlot::from_bytes(slot_data);
 
         if self.current_index as u32 >= slot.buckets_size {
-            return Err(HgMmapError::IndexOutOfRange);
+            return Err(HgMmapError::RefEnumeratorIndexOutOfRange);
         }
 
         let value_offset =
