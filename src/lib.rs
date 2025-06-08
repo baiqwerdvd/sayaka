@@ -53,7 +53,9 @@ mod sayaka {
             unsafe { std::slice::from_raw_parts_mut(buf.buf as *mut u8, buf.len as usize) };
 
         let result = PyBytes::new_with(py, decompressed_size, |decompressed| {
-            miki::decrypt(encrypted)?;
+            if encrypted[..32].iter().filter(|&&b| b == 0xa6).count() > 5 {
+                miki::decrypt(encrypted)?;
+            }
             decompress_impl(encrypted, decompressed)?;
             Ok(())
         });
@@ -93,7 +95,9 @@ mod sayaka {
             unsafe { std::slice::from_raw_parts_mut(buf.buf as *mut u8, buf.len as usize) };
 
         let result = PyBytes::new_with(py, decompressed_size, |decompressed| {
-            miki::decrypt_old(encrypted)?;
+            if encrypted[..32].iter().filter(|&&b| b == 0xB7).count() > 5 {
+                miki::decrypt_old(encrypted)?;
+            }
             decompress_impl(encrypted, decompressed)?;
             Ok(())
         });
